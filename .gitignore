@@ -1,104 +1,64 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+import datetime
+from urllib.request import urlopen
+from zipfile import ZipFile
+import csv
+import redis
 
-# C extensions
-*.so
+# get date
+todays_date = datetime.datetime.now()
+yesterday_date = datetime.datetime.now() - datetime.timedelta(days=1)
+todays_4pm = todays_date.replace(hour=16, minute=0, second=0, microsecond=0)
+week_number = datetime.datetime.today().weekday()
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+#monday
+if week_number == 0:
+    if todays_date <= todays_4pm:
+        pick_the_date_to_download = datetime.datetime.now() - datetime.timedelta(days=3)
+    else:
+        pick_the_date_to_download = todays_date
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+#tuesday to friday
+if week_number in range(1,5):
+    if todays_date <= todays_4pm:
+        pick_the_date_to_download = yesterday_date
+    else:
+        pick_the_date_to_download = todays_date
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+#sat
+if week_number == 5:
+        pick_the_date_to_download = yesterday_date
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
+#sun
+if week_number == 6:
+        pick_the_date_to_download = datetime.datetime.now() - datetime.timedelta(days=2)
+        
 
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
+download_date = pick_the_date_to_download.strftime("%d%m%y")
+zip_url = 'http://www.bseindia.com/download/BhavCopy/Equity/EQ' + download_date + '_CSV.ZIP'
+zipresp = urlopen(zip_url)
+# Create a new file on the  drive
+file_name = 'EQ' + download_date + '_CSV.ZIP'
+temporary_zip = open("/tmp/" + file_name, "wb")
+# Write the contents of the downloaded file into the new file
+temporary_zip.write(zipresp.read())
+# Close the newly-created file
+temporary_zip.close()
+# Re-open the newly-created file with ZipFile()
+zip_file = ZipFile("/tmp/" + file_name)
+# Extract its contents into /tmp/
+# extractall will automatically create the path here
+zip_file.extractall(path='/tmp/')
+# close the ZipFile instance
+zip_file.close()
+redis_db = redis.StrictRedis(host="localhost", port=6379,charset="utf-8", decode_responses=True,db=1)
+with open('/tmp/' + 'EQ' + download_date + '.CSV','r', encoding='utf-8') as csv_file:
+    csv_reader = csv.reader(csv_file)
+    # this will skip the first row
+    next(csv_reader)
+    for i in csv_reader:
+        redis_db.rpush('name', i[1])
+        redis_db.rpush('code', i[0])
+        redis_db.rpush('open', i[4])
+        redis_db.rpush('high', i[5])
+        redis_db.rpush('low', i[6])
+        redis_db.rpush('close', i[7])
